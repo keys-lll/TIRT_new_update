@@ -312,13 +312,6 @@ class Mission:
         self.say(f'{table} 號桌這個回合完成')
 
 
-def table_alignment_point(point, distance=0.35):
-    """Back away from the table along its recorded heading before final alignment."""
-    x, y, yaw_degrees = point
-    yaw = math.radians(yaw_degrees)
-    return (x - distance * math.cos(yaw), y - distance * math.sin(yaw), yaw_degrees)
-
-
 class Navigator(BasicNavigator):
     """
     Nav2 client that reports whether a goal succeeded.
@@ -341,18 +334,6 @@ class Navigator(BasicNavigator):
         self.destroy_node()
 
     def navigate(self, name, point):
-        """Align outside table 4 before approaching its recorded stopping pose."""
-        if name == 't4':
-            alignment = table_alignment_point(point)
-            self.info(f'4 號桌：先到外側 0.35 m 的預備點對準，再靠近原停靠點')
-            result = self.navigate_direct('t4_align', alignment)
-            if not result.ok:
-                return NavResult(result.outcome, '4 號桌外側對準未完成：' + result.text, result.seconds)
-            if getattr(self, 'abort_requested', lambda: False)():
-                return NavResult('CANCELED', '操作手中止任務')
-        return self.navigate_direct(name, point)
-
-    def navigate_direct(self, name, point):
         """Drive to `point` and return a NavResult; Ctrl+C cancels the goal."""
         try:
             self.buffer.lookup_transform(

@@ -30,6 +30,7 @@ def generate_launch_description():
         LogInfo(msg='Navigation TF fix: loading tested tf2 0.25.24 from ' + tf2_fix_dir),
         DeclareLaunchArgument('start_hardware', default_value='true'),
         DeclareLaunchArgument('use_rviz', default_value='true'),
+        DeclareLaunchArgument('keepout_mask', default_value=os.path.join(os.path.expanduser(os.environ.get('TIRT_WORKSPACE', '~/mecanum_ros2')), 'maps/keepout.yaml'), description='Keepout map YAML; empty disables keepout filters'),
         DeclareLaunchArgument('initial_waypoint', default_value='', description='Known physical starting waypoint; empty uses manual localization'),
         DeclareLaunchArgument('waypoint_file', default_value=os.path.join(os.path.expanduser(os.environ.get('TIRT_WORKSPACE', '~/mecanum_ros2')), 'src/car_waypoints/config/waypoints.yaml')),
         DeclareLaunchArgument('stm32_port', default_value='/dev/serial/by-id/usb-1a86_USB_Single_Serial_597B018072-if00'),
@@ -57,6 +58,34 @@ def generate_launch_description():
         bt['default_nav_through_poses_bt_xml'] = os.path.join(pkg, 'config', 'navigate_through_default.xml')
         name = LaunchConfiguration('initial_waypoint').perform(context)
         messages = []
+        keepout_file = os.path.expanduser(LaunchConfiguration('keepout_mask').perform(context))
+        if keepout_file:
+            keepout_file = os.path.abspath(keepout_file)
+            with open(keepout_file) as stream:
+                mask = yaml.safe_load(stream)
+            mask_image = os.path.join(os.path.dirname(keepout_file), mask['image'])
+            if not os.path.isfile(mask_image):
+                raise RuntimeError('Missing keepout image: ' + mask_image)
+            messages.extend([
+                LogInfo(msg='Keepout mask: ' + keepout_file),
+                Node(package='nav2_map_server', executable='map_server',
+                     name='keepout_mask_server', output='screen',
+                     parameters=[{'use_sim_time': False, 'yaml_filename': keepout_file,
+                                  'topic_name': '/keepout_mask', 'frame_id': 'map'}]),
+                Node(package='nav2_map_server', executable='costmap_filter_info_server',
+                     name='keepout_filter_info_server', output='screen',
+                     parameters=[{'use_sim_time': False, 'type': 0,
+                                  'filter_info_topic': '/keepout_filter_info',
+                                  'mask_topic': '/keepout_mask', 'base': 0.0, 'multiplier': 1.0}]),
+                Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
+                     name='lifecycle_manager_keepout', output='screen',
+                     parameters=[{'use_sim_time': False, 'autostart': True,
+                                  'node_names': ['keepout_mask_server', 'keepout_filter_info_server']}]),
+            ])
+        else:
+            for costmap in ('local_costmap', 'global_costmap'):
+                config[costmap][costmap]['ros__parameters']['filters'] = []
+            messages.append(LogInfo(msg='Keepout filters disabled: keepout_mask is empty'))
         if name:
             filename = os.path.expanduser(LaunchConfiguration('waypoint_file').perform(context))
             with open(filename) as stream:
