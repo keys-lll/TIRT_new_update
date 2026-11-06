@@ -1,6 +1,6 @@
-# Ros2_tirt
+# TIRT_new_update
 
-ROS 2 Humble 麥克納姆輪送餐比賽工作區，同步至 2026-11-05 目前實車工作區的程式、地圖與設定。包含終端機比賽流程、Nav2、RViz、STM32 底盤、EKF、光達、車身遮蔽、相機／QR、點位記錄，以及 tf2 鎖死修正庫。
+ROS 2 Humble 麥克納姆輪送餐比賽工作區，同步至 2026-11-06 目前實車工作區的程式、地圖與設定。包含終端機比賽流程、Nav2、RViz、STM32 底盤、EKF、光達、車身遮蔽、相機／QR、點位記錄，以及 tf2 鎖死修正庫。
 
 ## 環境與依賴
 
@@ -24,8 +24,8 @@ sudo apt install python3-colcon-common-extensions python3-rosdep python3-yaml \
 ## 編譯
 
 ```bash
-git clone https://github.com/keys-lll/Ros2_tirt.git "$HOME/Ros2_tirt"
-cd "$HOME/Ros2_tirt"
+git clone https://github.com/keys-lll/TIRT_new_update.git "$HOME/TIRT_new_update"
+cd "$HOME/TIRT_new_update"
 bash scripts/build.sh
 ```
 
@@ -38,7 +38,7 @@ bash scripts/build.sh
 終端機 1：啟動建圖。
 
 ```bash
-cd "$HOME/Ros2_tirt"
+cd "$HOME/TIRT_new_update"
 source scripts/env.sh
 ros2 launch mecanum_navigation mapping.launch.py
 ```
@@ -50,7 +50,7 @@ RViz 的 Fixed Frame 設為 `map`，確認 Map 顯示 `/map`、LaserScan 顯示 
 終端機 2：啟動鍵盤遙控，操作時讓此終端機保持焦點。
 
 ```bash
-cd "$HOME/Ros2_tirt"
+cd "$HOME/TIRT_new_update"
 source scripts/env.sh
 ros2 run keyboard_control keyboard_control
 ```
@@ -70,7 +70,7 @@ ros2 run keyboard_control keyboard_control
 終端機 3：保持建圖程序執行中，先用新檔名儲存地圖。
 
 ```bash
-cd "$HOME/Ros2_tirt"
+cd "$HOME/TIRT_new_update"
 source scripts/env.sh
 ros2 run nav2_map_server map_saver_cli \
   -f "$TIRT_WORKSPACE/maps/mecanum_map_new" \
@@ -83,11 +83,11 @@ ros2 run nav2_map_server map_saver_cli \
 要先測試新地圖，可在停止建圖後另開終端機執行：
 
 ```bash
-cd "$HOME/Ros2_tirt"
+cd "$HOME/TIRT_new_update"
 source scripts/env.sh
 ros2 launch mecanum_navigation navigation.launch.py \
   map:="$TIRT_WORKSPACE/maps/mecanum_map_new.yaml" \
-  keepout_mask:='' use_rviz:=true
+  use_keepout:=false use_rviz:=true
 ```
 
 這裡暫時關閉舊禁行區，並由 RViz 的 **2D Pose Estimate** 設定實際車位與朝向。重新建圖後座標原點、方向或尺寸可能改變，請重新記錄 start、prep、各桌點位，並依新地圖尺寸、解析度與原點重畫／對齊 keepout；不要直接沿用舊座標與遮罩。
@@ -138,46 +138,48 @@ ros2 run keyboard_control keyboard_control
 
 ## 目前主要設定
 
+本次上傳同步目前實車工作區；局部避障權重最終選用 2.4。
+
 | 項目 | 設定 |
 |---|---|
-| 平移速度上限 | 0.35 m/s |
-| 旋轉速度上限 | 0.6 rad/s |
-| 控制頻率 | 20 Hz |
-| 一般點位位置／方向容許誤差 | 0.06 m／5 度 |
-| prep goal checker 位置／方向容許誤差 | 0.05 m／5 度 |
-| prep DWB 位置容許值 | 0.05 m（與 checker 一致） |
-| 全域膨脹半徑／衰減係數 | 0.70 m／2.0 |
-| 局部膨脹半徑／衰減係數 | 0.50 m／15.0 |
-| 局部 costmap 網格 | 0.025 m；主地圖仍為 0.05 m/pixel |
-| 局部 costmap 更新頻率 | 10 Hz |
-| DWB ObstacleFootprint／PathAlign／RotateToGoal 權重 | 3.0／8／32 |
-| DWB GoalAlign／PathDist／GoalDist 權重 | 0／4／128 |
-| DWB x／y／角速度取樣數 | 15／15／15 |
-| DWB 預測時間 | 1.2 秒 |
-| 平移／旋轉減速度絕對值 | 0.6 m/s²／3.0 rad/s²（controller 與 velocity smoother 一致） |
-| RotateToGoal 角度評分前瞻 | 0.5 秒 |
-| 車身 footprint | 長 0.25 m、寬 0.32 m |
-| 全域／局部 footprint_padding | 0.04 m／0.015 m |
-| 光達相對 base_link | x=0.12 m、z=0.23 m |
+| 最大平移／旋轉速度 | 0.25 m/s／1.4 rad/s |
+| 控制頻率／局部地圖更新頻率 | 20 Hz／10 Hz |
+| 全域膨脹半徑／衰減係數 | 0.20 m／0.5 |
+| 局部膨脹半徑／衰減係數 | 0.35 m／1.0 |
+| 局部地圖網格 | 0.025 m |
+| 全域／局部 footprint_padding | 0／0.015 m |
+| 車身長／寬 | 0.25／0.32 m |
+| ObstacleFootprint／PathAlign／PathDist 權重 | 2.4／8／8 |
+| GoalAlign／GoalDist／RotateToGoal 權重 | 24／24／32 |
+| X／Y／角速度取樣數 | 15／15／15 |
+| 預測時間 | 1.7 秒 |
+| 平移／旋轉減速度絕對值 | 0.3 m/s²／1.5 rad/s² |
+| 一般／prep 位置容許值 | 0.05／0.05 m |
+| 一般／prep 朝向容許值 | 3.14 rad |
+| A／B 位置容許值 | 0.03 m；不要求對正朝向 |
+| 無進展容許時間／控制失敗容許時間 | 15／0.3 秒 |
 
-Nav2 設定為 `src/mecanum_navigation/config/nav2_params.yaml`；車身遮蔽為同目錄 `self_filter.yaml`。額外 collision monitor 未啟動，Nav2 仍使用 costmap／footprint 判斷碰撞。4 號桌直接前往記錄的 t4 停靠點。
+Nav2 設定在 `src/mecanum_navigation/config/nav2_params.yaml`。啟動檔會將一般 DWB 設定合併至 prep 與 A/B 控制器；A/B 只使用 Oscillation、ObstacleFootprint、PathDist、GoalDist 評分。此版本保留 Oscillation，額外 collision monitor 未啟動。這些參數不包含移動目標速度追蹤或預測。
 
-平移上限保留 0.35 m/s，DWB 在窄路、避障及接近目標時可選擇較低速度。`GoalAlign.scale=0` 不會取消最終朝向檢查；最後仍由 RotateToGoal 與 goal checker 收斂朝向。停用 Oscillation 評分，保留 ObstacleFootprint 碰撞檢查；`failure_tolerance=1.0`、無進展容許時間 30 秒，既有暫停與復原流程仍適用。prep 現在也要求朝向接近記錄的 0 度，避免以任意朝向開始下一段窄路。
+任務進備餐區必經 `b → a → prep`，離開必經 `prep → a → b → 目的地`。A/B 點位必須存在，不可跳過失敗的中繼點。點位檔是 `src/car_waypoints/config/waypoints.yaml`。
 
-地圖為 `maps/mecanum_map.yaml` 與對應 PGM；地圖原點與圖檔必須成對保留。RViz 預設顯示 Map、TF、AMCL、雷射、全域路徑，以及全域／局部 costmap。實車 USB serial-by-id、相機 `/dev/video0` 設定沿用原機，換機時請確認 `hardware.launch.py`、`navigation.launch.py` 與相機裝置。
+目前 GUI 同步自實車版本，可在已啟動導航的另一終端機執行：
 
-透過腳本啟動時會設定 `TIRT_WORKSPACE`，因此點位、修正庫與地圖使用這個儲存庫自身檔案。直接使用 ros2 命令前請先 `source scripts/env.sh`。
+```bash
+source scripts/env.sh
+ros2 run auto mission_gui
+```
 
-## 禁行區
+GUI 提供數字鍵操作與持續相機預覽；實際可用操作以當前畫面提示為準。終端任務仍可用 `bash scripts/run.sh mission`。
 
-`maps/keepout.yaml` 載入手繪的 `maps/keepout.pgm`，沿用主地圖的 0.05 m/pixel 與原點。黑色為禁行區、白色不增加禁行限制。以目前 `negate=0`、`free_thresh=0.25` 設定，灰色 205 的佔用機率約 0.196，會解讀為 free，並非 unknown；真正的 unknown 遮罩格會被 KeepoutFilter 忽略。遮罩不會清除主地圖既有的障礙物。圖中保留的黑色實體牆壁也會成為禁行區。編輯時保持圖片尺寸與位置，儲存後重新啟動導航。
+## 地圖與禁行區
 
-`bash scripts/run.sh nav` 會同時啟動遮罩 map server、filter info server 與其 lifecycle manager，並在全域與局部 costmap 啟用 KeepoutFilter，不需另開終端機。首次修改 launch／設定後執行 `bash scripts/build.sh`。RViz 可新增 Map 顯示 `/keepout_mask`（Durability: Transient Local），再查看全域與局部 costmap 確認禁行區已加入。
+`maps/mecanum_map.yaml` 與 PGM 同步自目前使用的 `/home/leo/TIRT_ws/map`，圖像為 312 × 398 像素，解析度 0.05 m，原點 `[-7.18, -11.5, 0]`。圖檔、原點與點位需配對使用。`maps/mecanum_map_org.pgm` 保留為既有歷史資料，不是導航腳本載入的圖檔。
 
-全域與局部 costmap 的 filters 依序執行 `keepout_filter`、`keepout_inflation_layer`，後者使用 `nav2_costmap_2d::InflationLayer`。keepout 膨脹半徑分別為全域 0.30 m、局部 0.12 m，衰減係數皆為 3.0；此層處理加入禁行區後的 costmap。一般障礙物膨脹分別為全域 0.70 m／係數 2.0、局部 0.50 m／係數 15.0。局部 2.5 公分網格會將 0.12 m 半徑向上取整為 5 格（0.125 m）。膨脹增加周邊代價，不等同將整個緩衝區變成黑色禁行區，也不直接代表車身邊緣的離障距離。禁行區限制 Nav2 規劃與控制，不會阻擋鍵盤直接發布的底盤命令。直接啟動 navigation.launch.py 時可用 `keepout_mask:=/absolute/path/to/mask.yaml` 指定其他遮罩，或以 `keepout_mask:=''` 一起關閉禁行區及其膨脹層。
+禁行區預設關閉（`use_keepout:=false`），與目前實車啟動行為一致。保留的 `maps/keepout.yaml`／PGM 屬於舊地圖座標，不能直接視為已對齊目前主地圖。先重新製作或核對遮罩後，才以 `use_keepout:=true keepout_mask:=/absolute/path/to/aligned_mask.yaml` 啟用。此版本沒有舊版的 keepout 額外膨脹層。`src/mecanum_navigation/maps/1031i_keepout.*` 亦為保留資料，預設不載入。
 
-## 驗證範圍
+透過腳本啟動會設定 `TIRT_WORKSPACE`，點位、地圖與 tf2 修正庫使用本儲存庫檔案；直接執行 ROS 指令前請先 `source scripts/env.sh`。硬體 USB serial-by-id 與相機裝置沿用原機設定。
 
-初次整理時曾完成 10 套件編譯。本次使用最新 keepout（SHA256 前綴 `50a7e036dee1`）及 ROS 2 Humble／Nav2 1.1.20 的原生 DWB、NavFn、InflationLayer，在專案外的暫存環境記錄軌跡。20 段獨立路線與承接實際停車姿態的 20 段連續路線皆完成，未偵測到車身與佔用格重疊；一般點位位置誤差小於 6 cm，所有點位方向誤差小於 5 度。九種合成障礙情境中，八種完成到點、一種在通道完全封閉時保持暫停；最小車身邊緣間距為 17.73 cm。通道障礙移除的案例先停 12 秒，再繼續到點。
+## 本次驗證範圍
 
-上述為理想運動、合成 costmap 的離線結果，並非實車里程計軌跡；未包含真實雷射遮蔽、定位誤差、馬達延遲或完整 BT 復原流程，不能視為任意動態障礙下固定 15 cm 距離的保證。本次未重新完整編譯專案或執行實車任務。既有單檔任務測試在修改前後皆為 62 通過、10 失敗，失敗項目相同，未擴大本次參數調整範圍去改動其原有流程。TF 修正的既有離線 A/B 證據見 `docs/tf_deadlock_debug_20261102.md`；歷史報告中的原機路徑僅供追溯。
+上傳前核對來源快照、Python 語法、YAML/XML 解析、shell 語法、地圖影像與點位，以及 prep/A/B 控制器的參數繼承。未啟動硬體、未進行實車避障測試，也未重新完整編譯。舊版 README 的合成障礙通過率與間距數據不適用於本次地圖及設定。歷史 TF 修正報告見 `docs/tf_deadlock_debug_20261102.md`。

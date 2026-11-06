@@ -67,3 +67,17 @@ scan_to_scan_filter_chain:
         min_z: -0.05
         max_z: 0.4
         invert: false
+    # Full 25 cm x 32 cm chassis, centred on base_link.
+    # Existing measured bracket masks remain in filters 1-5.
+    filter6:
+      name: full_chassis_body
+      type: laser_filters/LaserScanBoxFilter
+      params:
+        box_frame: base_link
+        min_x: -0.125
+        max_x: 0.125
+        min_y: -0.16
+        max_y: 0.16
+        min_z: -0.05
+        max_z: 0.4
+        invert: false

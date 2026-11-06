@@ -15,6 +15,6 @@
   },
   "tf2_core_version": "0.25.24",
   "tf2_platform": "Ubuntu 22.04 arm64 / ROS Humble",
-  "notes": "Current live sources, map and recorded waypoints. Base restoration from 2026-11-03 17:30:51 with subsequent current parameter and terminal-flow edits. Historical backups, build outputs and bags excluded. Bundle-only TIRT_WORKSPACE path adaptation preserved.",
-  "updated": "2026-11-05"
+  "notes": "Snapshot of current live workspace with local obstacle weight 2.4, A/B prep transit points, current map and mission GUI. TIRT_WORKSPACE path adaptation retained for portable checkout. Keepout disabled by default as in live launch; retained legacy mask must be aligned before enabling. Build outputs, backups and test bags excluded.",
+  "updated": "2026-11-06"
 }

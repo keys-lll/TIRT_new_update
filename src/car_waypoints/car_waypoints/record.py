@@ -42,6 +42,8 @@ def main():
     except ValueError as e:
         print(f'點位檔有錯：{e}')
     print(f'點位檔：{node.waypoint_file}')
+    print('建議存點：start、prep、t1～t5、a（備餐區前方）、b（5 號桌旁）')
+    print('A／a 存為 a；B／b 存為 b。A、B 記錄時不必刻意對準車頭。')
     print('把車開到定位，輸入名稱就存；help 看說明，q 離開。RViz 加 MarkerArray 看 /waypoint_markers')
     try:
         running = True

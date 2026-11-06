@@ -9,6 +9,7 @@ Delivery competition mission with terminal table selection.
 直接輸入已記錄的桌號（1～5），按 Enter 出發帶位，不先導航到 start。
 後續依序帶位、固定餐、加點餐，第二回合換區。
 點餐、加點到桌邊後開相機，掃 QR 或 Enter 放行；最後返回 start 前只按 Enter。
+進備餐區：b → a → prep；離開：prep → a → b → 目的地；a/b 不對正角度。
 prep 按 Enter 出發；第一趟 none 仍去 prep，第二趟 none 返回 start 後重新選桌。
 q + Enter 可中止導航或等待；結束後 Enter 重新開始。
 """
@@ -49,7 +50,7 @@ FRONT_TABLES = (1, 4)
 BACK_TABLES = (2, 3, 5)
 QUIT = ('q', 'quit')
 MISSION_FINISHED = 2  # Current flow ended at start; terminal immediately returns to table selection.
-NAMES = ('start', 'prep', 't1', 't2', 't3', 't4', 't5')
+NAMES = ('start', 'prep', 't1', 't2', 't3', 't4', 't5', 'a', 'b')
 
 
 class NavResult(NamedTuple):
@@ -73,8 +74,8 @@ class MissionAborted(Exception):
 
 
 def all_points(recorded_only=False):
-    """Return the seven points in mission order: start, prep, tables 1-5."""
-    points = {'start': START, 'prep': PREP}
+    """Return the recorded mission points, including prep transit points a/b."""
+    points = {'start': START, 'prep': PREP, 'a': None, 'b': None}
     points.update({f't{n}': point for n, point in sorted(TABLES.items())})
     # The shared waypoint YAML stores yaw in radians; this legacy API uses degrees.
     recorded = load_waypoints(DEFAULT_FILE)
@@ -140,7 +141,8 @@ class Mission:
         self.stop_seconds = stop_seconds
         self.prepare_start = prepare_start
         self.start_before_table = start_before_table
-        # 已經填了座標的點；None 表示 7 個點都能用
+        self.last_waypoint = None
+        # 已經填了座標的點；None 表示所有任務點都能用
         self.ready = set(NAMES if ready is None else ready)
 
     def ask_line(self, prompt):
@@ -223,7 +225,7 @@ class Mission:
 
         Return False, having said why, when the points needed are not set.
         """
-        missing = [n for n in ('start', 'prep') if n not in self.ready]
+        missing = [n for n in ('start', 'prep', 'a', 'b') if n not in self.ready]
         if missing:
             self.say(f'比賽流程需要 {"、".join(missing)} 的座標，請先用 wp_record 記錄此點')
             return False
@@ -251,20 +253,42 @@ class Mission:
         return True
 
     def go(self, name):
-        """Navigate to `name`; after a failure the operator retries, skips or quits."""
+        """Route every prep entry/exit through the recorded transit points."""
+        if name == 'prep' and self.last_waypoint != 'prep':
+            route = {'a': ['prep'], 'b': ['a', 'prep']}.get(
+                self.last_waypoint, ['b', 'a', 'prep'])
+        elif self.last_waypoint == 'prep' and name != 'prep':
+            route = ['a'] if name == 'a' else ['a', 'b']
+            if name not in ('a', 'b'):
+                route.append(name)
+        else:
+            route = [name]
+        missing = [point for point in route if point not in self.ready]
+        if missing:
+            raise MissionAborted('缺少必經點 ' + '、'.join(missing) + '，請先用 wp_record 記錄')
+        if len(route) > 1:
+            self.say('備餐區必經路線：' + ' → '.join(route))
+        for point in route:
+            self._go_direct(point)
+
+    def _go_direct(self, name):
+        """Visit one point; failed mandatory transit points cannot be skipped."""
         while True:
             result = self.navigate(name)
             self.say(result.text)
             if result.ok:
+                self.last_waypoint = name
                 return
             while True:
-                choice = self.ask_line(
-                    '這一步沒成功。[r] 重試  [s] 跳過（我已手動把車放到位）  [q] 結束 > ').lower()
-                if choice == 's':
+                prompt = ('中繼點未到達。[r] 重試  [q] 結束 > ' if name in ('a', 'b') else
+                          '這一步沒成功。[r] 重試  [s] 跳過（我已手動把車放到位）  [q] 結束 > ')
+                choice = self.ask_line(prompt).lower()
+                if choice == 's' and name not in ('a', 'b'):
+                    self.last_waypoint = name
                     return
                 if choice == 'r':
                     break
-                self.say('請輸入 r、s 或 q')
+                self.say('請輸入 r 或 q' if name in ('a', 'b') else '請輸入 r、s 或 q')
 
     def hold(self):
         """Optionally dwell; zero proceeds directly to the table-side QR prompt."""
@@ -334,6 +358,10 @@ class Navigator(BasicNavigator):
         self.destroy_node()
 
     def navigate(self, name, point):
+        """Navigate directly to the recorded waypoint."""
+        return self.navigate_direct(name, point)
+
+    def navigate_direct(self, name, point):
         """Drive to `point` and return a NavResult; Ctrl+C cancels the goal."""
         try:
             self.buffer.lookup_transform(
@@ -349,6 +377,9 @@ class Navigator(BasicNavigator):
         goal = pose_from_point(point, MAP_FRAME, self.get_clock().now().to_msg())
         if name == 'prep':
             tree = os.path.join(get_package_share_directory('mecanum_navigation'), 'config', 'navigate_prep.xml')
+            accepted = self.goToPose(goal, behavior_tree=tree)
+        elif name in ('a', 'b'):
+            tree = os.path.join(get_package_share_directory('mecanum_navigation'), 'config', 'navigate_transit.xml')
             accepted = self.goToPose(goal, behavior_tree=tree)
         else:
             accepted = self.goToPose(goal)
@@ -403,6 +434,13 @@ def run(node, points, ask=input, say=print, sleep=time.sleep, prepare_start=None
 
 
 def main():
+    import fcntl
+    lock = open('/tmp/mecanum_mission_control.lock', 'w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print('已有任務在執行，請先結束原本的終端機或 GUI 任務。', flush=True)
+        return 1
     # Ctrl+C 要讓 Python 收到，這樣才能取消正在跑的導航目標
     rclpy.init(signal_handler_options=rclpy.signals.SignalHandlerOptions.NO)
     from terminal_io import TerminalOperator

@@ -30,7 +30,8 @@ def generate_launch_description():
         LogInfo(msg='Navigation TF fix: loading tested tf2 0.25.24 from ' + tf2_fix_dir),
         DeclareLaunchArgument('start_hardware', default_value='true'),
         DeclareLaunchArgument('use_rviz', default_value='true'),
-        DeclareLaunchArgument('keepout_mask', default_value=os.path.join(os.path.expanduser(os.environ.get('TIRT_WORKSPACE', '~/mecanum_ros2')), 'maps/keepout.yaml'), description='Keepout map YAML; empty disables keepout filters'),
+        DeclareLaunchArgument('use_keepout', default_value='false'),
+        DeclareLaunchArgument('keepout_mask', default_value=os.path.join(os.path.expanduser(os.environ.get('TIRT_WORKSPACE', '~/mecanum_ros2')), 'maps/keepout.yaml')),
         DeclareLaunchArgument('initial_waypoint', default_value='', description='Known physical starting waypoint; empty uses manual localization'),
         DeclareLaunchArgument('waypoint_file', default_value=os.path.join(os.path.expanduser(os.environ.get('TIRT_WORKSPACE', '~/mecanum_ros2')), 'src/car_waypoints/config/waypoints.yaml')),
         DeclareLaunchArgument('stm32_port', default_value='/dev/serial/by-id/usb-1a86_USB_Single_Serial_597B018072-if00'),
@@ -53,39 +54,14 @@ def generate_launch_description():
         prep_settings = copy.deepcopy(controller['FollowPath'])
         prep_settings.update(controller['FollowPathPrep'])
         controller['FollowPathPrep'] = prep_settings
+        transit_settings = copy.deepcopy(controller['FollowPath'])
+        transit_settings.update(controller['FollowPathTransit'])
+        controller['FollowPathTransit'] = transit_settings
         bt = config['bt_navigator']['ros__parameters']
         bt['default_nav_to_pose_bt_xml'] = os.path.join(pkg, 'config', 'navigate_default.xml')
         bt['default_nav_through_poses_bt_xml'] = os.path.join(pkg, 'config', 'navigate_through_default.xml')
         name = LaunchConfiguration('initial_waypoint').perform(context)
         messages = []
-        keepout_file = os.path.expanduser(LaunchConfiguration('keepout_mask').perform(context))
-        if keepout_file:
-            keepout_file = os.path.abspath(keepout_file)
-            with open(keepout_file) as stream:
-                mask = yaml.safe_load(stream)
-            mask_image = os.path.join(os.path.dirname(keepout_file), mask['image'])
-            if not os.path.isfile(mask_image):
-                raise RuntimeError('Missing keepout image: ' + mask_image)
-            messages.extend([
-                LogInfo(msg='Keepout mask: ' + keepout_file),
-                Node(package='nav2_map_server', executable='map_server',
-                     name='keepout_mask_server', output='screen',
-                     parameters=[{'use_sim_time': False, 'yaml_filename': keepout_file,
-                                  'topic_name': '/keepout_mask', 'frame_id': 'map'}]),
-                Node(package='nav2_map_server', executable='costmap_filter_info_server',
-                     name='keepout_filter_info_server', output='screen',
-                     parameters=[{'use_sim_time': False, 'type': 0,
-                                  'filter_info_topic': '/keepout_filter_info',
-                                  'mask_topic': '/keepout_mask', 'base': 0.0, 'multiplier': 1.0}]),
-                Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
-                     name='lifecycle_manager_keepout', output='screen',
-                     parameters=[{'use_sim_time': False, 'autostart': True,
-                                  'node_names': ['keepout_mask_server', 'keepout_filter_info_server']}]),
-            ])
-        else:
-            for costmap in ('local_costmap', 'global_costmap'):
-                config[costmap][costmap]['ros__parameters']['filters'] = []
-            messages.append(LogInfo(msg='Keepout filters disabled: keepout_mask is empty'))
         if name:
             filename = os.path.expanduser(LaunchConfiguration('waypoint_file').perform(context))
             with open(filename) as stream:
@@ -101,10 +77,35 @@ def generate_launch_description():
             amcl['always_reset_initial_pose'] = True
             amcl['initial_pose'] = dict(pose, z=0.0)
             messages.append(LogInfo(msg=f'Initial localization from {name}: {pose}. Robot must physically start at this pose.'))
+        keepout_nodes = []
+        if LaunchConfiguration('use_keepout').perform(context).lower() in ('true', '1', 'yes'):
+            mask_file = os.path.expanduser(LaunchConfiguration('keepout_mask').perform(context))
+            if not os.path.isfile(mask_file):
+                raise RuntimeError('Keepout mask YAML not found: ' + mask_file)
+            keepout_nodes = [
+                Node(package='nav2_map_server', executable='map_server',
+                     name='keepout_mask_server', output='screen', parameters=[{
+                         'use_sim_time': False, 'yaml_filename': mask_file,
+                         'topic_name': '/keepout_filter_mask', 'frame_id': 'map'}]),
+                Node(package='nav2_map_server', executable='costmap_filter_info_server',
+                     name='keepout_filter_info_server', output='screen', parameters=[{
+                         'use_sim_time': False, 'type': 0,
+                         'filter_info_topic': '/costmap_filter_info',
+                         'mask_topic': '/keepout_filter_mask',
+                         'base': 0.0, 'multiplier': 1.0}]),
+                Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
+                     name='lifecycle_manager_keepout', output='screen', parameters=[{
+                         'use_sim_time': False, 'autostart': True,
+                         'node_names': ['keepout_mask_server', 'keepout_filter_info_server']}]),
+            ]
+            messages.append(LogInfo(msg='Keepout mask: ' + mask_file))
+        else:
+            for name in ('global_costmap', 'local_costmap'):
+                config[name][name]['ros__parameters'].pop('filters', None)
         with tempfile.NamedTemporaryFile(mode='w', prefix='mecanum_nav_runtime_', suffix='.yaml', delete=False) as stream:
             yaml.safe_dump(config, stream, sort_keys=False)
             params_file = stream.name
-        return messages + [include('nav2_bringup', 'bringup_launch.py', {
+        return messages + keepout_nodes + [include('nav2_bringup', 'bringup_launch.py', {
             'map': LaunchConfiguration('map'), 'slam': 'False', 'use_sim_time': 'false',
             'params_file': params_file, 'autostart': 'true', 'use_composition': 'False',
         })]

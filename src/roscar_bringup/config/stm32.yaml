@@ -4,8 +4,8 @@
 /**:
   ros__parameters:
     chassis_yaw_offset: 3.141592653589793
-    max_vx: 0.35
-    max_vy: 0.35
+    max_vx: 0.25
+    max_vy: 0.25
     max_wz: 1.4
     # Lower yaw-rate measurement variance makes EKF trust IMU gyro more.
     # Conservative initial tuning; validate with motion and vibration.

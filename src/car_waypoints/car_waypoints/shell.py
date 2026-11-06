@@ -49,6 +49,8 @@ class RecordShell:
 
     HELP = '\n'.join([
         '<名稱>      把車子目前位置存成這個名稱（已存在就覆寫），例如 start、t1、prep',
+        'a / A       儲存備餐區前方中繼點 a（不必刻意對準車頭）',
+        'b / B       儲存 5 號桌旁中繼點 b（不必刻意對準車頭）',
         'del <名稱>  刪除一個點',
         'list        列出所有點',
         'q           離開',
@@ -63,6 +65,10 @@ class RecordShell:
     def handle(self, line):
         """Run one command line; return (text to print, keep running)."""
         words = line.split()
+        if len(words) == 1 and words[0] in ('A', 'B'):
+            words[0] = words[0].lower()
+        elif len(words) == 2 and words[0] == 'del' and words[1] in ('A', 'B'):
+            words[1] = words[1].lower()
         if not words:
             return '', True
         verb = words[0]

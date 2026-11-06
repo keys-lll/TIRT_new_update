@@ -1,0 +1,11 @@
+# Keepout mask based on /home/leo/Desktop/1031i.pgm.
+# Paint forbidden areas BLACK (0) in 1031i_keepout.pgm.
+# WHITE (255) = no added restriction; existing gray = unknown.
+# Preserve image dimensions (227 x 197), resolution and origin.
+image: 1031i_keepout.pgm
+mode: trinary
+resolution: 0.05
+origin: [-1.79, -4.84, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
